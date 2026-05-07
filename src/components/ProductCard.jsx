@@ -44,7 +44,10 @@ export default function ProductCard({ product, onQuickView }) {
         onMouseLeave={handleMouseLeave}
       >
         {/* ── Image Container ── */}
-        <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-[#1c1b1b]">
+        <div 
+          className="relative aspect-[4/5] overflow-hidden rounded-sm bg-[#1c1b1b] cursor-pointer"
+          onClick={() => onQuickView ? onQuickView() : setModalOpen(true)}
+        >
           {/* Wishlist Button */}
           <button
             onClick={(e) => {
@@ -104,7 +107,10 @@ export default function ProductCard({ product, onQuickView }) {
           >
             {/* Quick View */}
             <button
-              onClick={() => onQuickView ? onQuickView() : setModalOpen(true)}
+              onClick={(e) => {
+                e.stopPropagation()
+                onQuickView ? onQuickView() : setModalOpen(true)
+              }}
               className="flex-1 text-white border-t border-r border-white/20 bg-black/60 backdrop-blur-sm
                          text-[10px] font-medium tracking-widest uppercase py-3 cursor-pointer
                          hover:bg-white/20 transition-colors duration-200"
@@ -115,7 +121,10 @@ export default function ProductCard({ product, onQuickView }) {
 
             {/* Add to Cart */}
             <button
-              onClick={handleAddToCart}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleAddToCart()
+              }}
               className="flex-1 text-[#171717] bg-[#f8f8f8] hover:bg-white border-t border-white/10
                          text-[10px] font-medium tracking-widest uppercase py-3 cursor-pointer
                          transition-colors duration-200"
@@ -136,7 +145,11 @@ export default function ProductCard({ product, onQuickView }) {
               {product.name}
             </h3>
             <p className="text-white/40 text-xs mt-0.5" style={FONT}>
-              {product.sizes?.length === 1 ? product.sizes[0] : `${product.sizes?.length || 0} sizes`}
+              {['Punjabi Suits', 'Bridal Wear'].includes(product?.category)
+                ? 'One Size'
+                : product.sizes?.length === 1
+                ? product.sizes[0]
+                : `${product.sizes?.length || 0} sizes`}
             </p>
           </div>
           <span className="text-white/75 text-sm font-light shrink-0 tabular-nums" style={FONT}>

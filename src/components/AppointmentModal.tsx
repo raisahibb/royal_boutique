@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { X, CheckCircle } from 'lucide-react'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase/config'
+import { useAuth } from '../context/AuthContext'
 
 const FONT = { fontFamily: 'Barlow, sans-serif' }
 
@@ -11,6 +14,7 @@ const inputBase =
 export interface AppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultOccasion?: string;
 }
 
 export interface FormState {
@@ -22,10 +26,13 @@ export interface FormState {
   message: string;
 }
 
-export default function AppointmentModal({ isOpen, onClose }: AppointmentModalProps) {
+export default function AppointmentModal({ isOpen, onClose, defaultOccasion }: AppointmentModalProps) {
+  const { user } = useAuth()
   const [success, setSuccess] = useState<boolean>(false)
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
   const [form, setForm] = useState<FormState>({
-    name: '', phone: '', email: '', date: '', occasion: '', message: '',
+    name: '', phone: '', email: '', date: '', occasion: defaultOccasion || '', message: '',
   })
 
   /* ── Body scroll lock ── */
@@ -46,24 +53,48 @@ export default function AppointmentModal({ isOpen, onClose }: AppointmentModalPr
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
-  /* ── Reset form on close ── */
+  /* ── Reset form on close / seed defaultOccasion on open ── */
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      setForm(prev => ({ ...prev, occasion: defaultOccasion || prev.occasion }))
+    } else {
       setTimeout(() => {
         setSuccess(false)
+        setIsSubmitting(false)
+        setError('')
         setForm({ name: '', phone: '', email: '', date: '', occasion: '', message: '' })
       }, 300)
     }
-  }, [isOpen])
+  }, [isOpen, defaultOccasion])
 
   function update(field: keyof FormState) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => 
       setForm((prev) => ({ ...prev, [field]: e.target.value }))
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setSuccess(true)
+    setIsSubmitting(true)
+    setError('')
+    try {
+      await addDoc(collection(db, 'appointments'), {
+        userId: user?.uid || null,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        date: form.date,
+        occasion: form.occasion,
+        message: form.message.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp()
+      })
+      setSuccess(true)
+    } catch (err: any) {
+      console.error('[Appointment] Submit error:', err)
+      setError('Failed to book appointment. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   /* ── Don't render anything in DOM when closed ── */
@@ -141,6 +172,12 @@ export default function AppointmentModal({ isOpen, onClose }: AppointmentModalPr
                 </p>
               </div>
 
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl text-center" style={FONT}>
+                  {error}
+                </div>
+              )}
+
               {/* Your Details */}
               <div>
                 <p className="text-xs uppercase tracking-wider text-white/40 mb-3" style={FONT}>
@@ -191,6 +228,7 @@ export default function AppointmentModal({ isOpen, onClose }: AppointmentModalPr
                     style={{ ...FONT, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' opacity='0.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center' }}
                   >
                     <option value="" disabled className="bg-[#1a1a1a]">Select Occasion</option>
+                    <option className="bg-[#1a1a1a]">Custom Measurements / Personal Styling</option>
                     <option className="bg-[#1a1a1a]">Wedding</option>
                     <option className="bg-[#1a1a1a]">Festival</option>
                     <option className="bg-[#1a1a1a]">Engagement</option>
@@ -212,13 +250,15 @@ export default function AppointmentModal({ isOpen, onClose }: AppointmentModalPr
               {/* Submit */}
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-[#f8f8f8] to-[#e8e8e8] hover:from-white hover:to-[#f0f0f0]
+                disabled={isSubmitting}
+                className={`w-full bg-gradient-to-r from-[#f8f8f8] to-[#e8e8e8] hover:from-white hover:to-[#f0f0f0]
                            text-[#171717] font-medium tracking-wide py-4 rounded-xl
                            shadow-lg shadow-white/10 hover:shadow-xl hover:shadow-white/20
-                           transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer"
+                           transform transition-all duration-200
+                           ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98] cursor-pointer'}`}
                 style={FONT}
               >
-                Confirm Appointment
+                {isSubmitting ? 'Confirming...' : 'Confirm Appointment'}
               </button>
 
               <div className="text-center mt-2 flex flex-col items-center gap-2">

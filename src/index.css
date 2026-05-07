@@ -27,6 +27,31 @@
   .text-glow {
     text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
   }
+
+  /* ── Premium gradient accent ── */
+  /* Gradient text — use on <span> or <p> */
+  .text-accent {
+    background: linear-gradient(110deg, #fecdd3 0%, #f9a8d4 40%, #c4b5fd 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  /* Softer tinted variant for secondary text */
+  .text-accent-muted {
+    background: linear-gradient(110deg, rgba(254,205,211,0.75) 0%, rgba(249,168,212,0.75) 45%, rgba(196,181,253,0.75) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  /* Glowing border via box-shadow */
+  .border-accent-glow {
+    border-color: rgba(249, 168, 212, 0.30);
+    box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.12) inset;
+  }
+  /* Subtle gradient background tint */
+  .bg-accent-tint {
+    background: linear-gradient(135deg, rgba(254,205,211,0.07) 0%, rgba(196,181,253,0.07) 100%);
+  }
 }
 
 .category-scroll {

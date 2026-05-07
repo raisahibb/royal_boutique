@@ -1,10 +1,31 @@
-import { X, Trash2, Plus, Minus, ShoppingBag } from 'lucide-react'
+import { X, Trash2, Plus, Minus, ShoppingBag, LogIn } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { useAuth } from '../context/AuthContext'
+import LoginModal from './LoginModal'
+import SignupModal from './SignupModal'
+import { useState } from 'react'
 
 const FONT = { fontFamily: 'Barlow, sans-serif' }
 
-export default function CartSidebar() {
+export default function CartSidebar({ onCheckout }) {
   const { items, isOpen, setIsOpen, removeFromCart, updateQuantity, subtotal } = useCart()
+  const { user }   = useAuth()
+  const [authModal, setAuthModal] = useState({ open: false, type: 'login' })
+
+  function openLoginForCheckout() {
+    setIsOpen(false)
+    setTimeout(() => setAuthModal({ open: true, type: 'login' }), 300)
+  }
+  function closeAuth() { setAuthModal((p) => ({ ...p, open: false })) }
+
+  function handleCheckout() {
+    if (!user) {
+      openLoginForCheckout()
+    } else {
+      setIsOpen(false)
+      setTimeout(() => onCheckout?.(), 300)
+    }
+  }
 
   const fmt = (n) => `₹${n.toLocaleString('en-IN')}`
 
@@ -102,7 +123,7 @@ export default function CartSidebar() {
                                  px-2 py-0.5 rounded-sm"
                       style={FONT}
                     >
-                      Size: {item.selectedSize}
+                      {item.stitching?.id === 'custom' ? 'Custom Fit' : `Size: ${item.category === 'Punjabi Suits' || item.category === 'Bridal Wear' ? 'Free Size' : item.selectedSize}`}
                     </span>
 
                     <p className="text-white/50 text-xs mt-1" style={FONT}>
@@ -172,11 +193,13 @@ export default function CartSidebar() {
 
               {/* Checkout */}
               <button
+                onClick={handleCheckout}
                 className="w-full bg-[#f8f8f8] hover:bg-white text-[#171717] text-sm font-medium
-                           py-3.5 transition-colors duration-200 cursor-pointer tracking-wide"
+                           py-3.5 transition-colors duration-200 cursor-pointer tracking-wide flex items-center justify-center gap-2"
                 style={{ borderRadius: '2px', ...FONT }}
               >
-                Checkout — {fmt(subtotal)}
+                {!user && <LogIn size={14} />}
+                {user ? `Checkout — ${fmt(subtotal)}` : `Login to Checkout`}
               </button>
 
               {/* Continue shopping */}
@@ -192,6 +215,26 @@ export default function CartSidebar() {
           </>
         )}
       </aside>
+
+      {/* Auth modals (triggered from cart) */}
+      <LoginModal
+        isOpen={authModal.open && authModal.type === 'login'}
+        onClose={closeAuth}
+        onSwitchToSignup={() => setAuthModal({ open: true, type: 'signup' })}
+        onLoginSuccess={() => {
+          closeAuth()
+          setTimeout(() => setIsOpen(true), 200)
+        }}
+      />
+      <SignupModal
+        isOpen={authModal.open && authModal.type === 'signup'}
+        onClose={closeAuth}
+        onSwitchToLogin={() => setAuthModal({ open: true, type: 'login' })}
+        onSignupSuccess={() => {
+          closeAuth()
+          setTimeout(() => setIsOpen(true), 200)
+        }}
+      />
     </>
   )
 }

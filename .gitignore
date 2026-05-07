@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+.firebase/
+migrate.js
+migrate_sub.js

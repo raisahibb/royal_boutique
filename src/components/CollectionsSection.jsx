@@ -22,8 +22,10 @@ const ALL_COLLECTIONS = [
     price: 3499,
     category: 'Punjabi Suits',
     images: [
-      'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80',
-      'https://images.unsplash.com/photo-1583391733952-235f57e1d3d2?w=800&q=80',
+      '/pics/Pink punjabi suit/1.jpg',
+      '/pics/Pink punjabi suit/2.jpg',
+      '/pics/Pink punjabi suit/3.jpg',
+      '/pics/Pink punjabi suit/4.jpg',
     ],
     description: 'Traditional Patiala salwar with short kurti and heavy dupatta. Gotta patti work throughout. Perfect for weddings and festivals.',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
@@ -34,20 +36,23 @@ const ALL_COLLECTIONS = [
     price: 2899,
     category: 'Punjabi Suits',
     images: [
-      'https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=800&q=80',
-      'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&q=80',
+      '/pics/Phulkari suit/1.jpg',
+      '/pics/Phulkari suit/2.jpg',
+      '/pics/Phulkari suit/3.jpg',
+      '/pics/Phulkari suit/4.jpg',
     ],
     description: 'Hand-embroidered Phulkari dupatta on cotton silk suit. Authentic Punjabi craft with vibrant colors.',
     sizes: ['S', 'M', 'L', 'XL'],
   },
   {
     id: 3,
-    name: 'Sharara Suit - Bottle Green',
+    name: 'Sharara Suit Regular',
     price: 4599,
     category: 'Punjabi Suits',
     images: [
-      'https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800&q=80',
-      'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80',
+      '/pics/sharara suit/1.jpg',
+      '/pics/sharara suit/2.jpg',
+      '/pics/sharara suit/3.jpg',
     ],
     description: 'Heavy sharara with mirror work kurti in bottle green. Party wear essential with traditional Abhla work.',
     sizes: ['M', 'L', 'XL', 'XXL'],
@@ -58,8 +63,9 @@ const ALL_COLLECTIONS = [
     price: 1299,
     category: 'Punjabi Suits',
     images: [
-      'https://images.unsplash.com/photo-0mX0qvcLV4Y?w=800&q=80',
-      'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80',
+      '/pics/daily wear suit/1.jpg',
+      '/pics/daily wear suit/2.jpg',
+      '/pics/daily wear suit/3.jpg',
     ],
     description: 'Comfortable cotton suit for daily wear. Simple dupatta included. Breathable fabric for summer.',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
@@ -72,8 +78,10 @@ const ALL_COLLECTIONS = [
     price: 28999,
     category: 'Bridal Wear',
     images: [
-      'https://images.unsplash.com/photo-OsGg5pDBM9Y?w=800&q=80',
-      'https://images.unsplash.com/photo-pRpz3dTl3NA?w=800&q=80',
+      '/pics/bridal lehnga/1.jpg',
+      '/pics/bridal lehnga/2.jpg',
+      '/pics/bridal lehnga/3.jpg',
+      '/pics/bridal lehnga/4.jpg',
     ],
     description: 'Heavy velvet lehenga with gold zardozi embroidery. Punjabi bridal style with long choli and double dupatta.',
     sizes: ['M', 'L', 'XL', 'XXL'],
@@ -84,8 +92,10 @@ const ALL_COLLECTIONS = [
     price: 24999,
     category: 'Bridal Wear',
     images: [
-      'https://images.unsplash.com/photo-1lmkQg6uf24?w=800&q=80',
-      'https://images.unsplash.com/photo-kAvs9V8bLmc?w=800&q=80',
+      '/pics/bridal sharara/1.jpg',
+      '/pics/bridal sharara/2.jpg',
+      '/pics/bridal sharara/3.jpg',
+      '/pics/bridal sharara/4.jpg',
     ],
     description: 'Soft pink bridal sharara with heavy sequin embroidery. Modern Punjabi bride choice with dupatta set.',
     sizes: ['S', 'M', 'L', 'XL'],
@@ -186,7 +196,7 @@ const PAGE_SIZE = 6
 /* ─────────────────────────────────────────────
    Component
 ───────────────────────────────────────────── */
-export default function CollectionsSection() {
+export default function CollectionsSection({ onCheckout }) {
   const [activeCategory, setActiveCategory] = useState('All')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [quickViewProduct, setQuickViewProduct] = useState(null)
@@ -366,7 +376,7 @@ export default function CollectionsSection() {
       )}
 
       {/* ── Sidebars ── */}
-      <CartSidebar />
+      <CartSidebar onCheckout={onCheckout} />
       <WishlistSidebar />
 
       {/* ── Toast Notifications ── */}
