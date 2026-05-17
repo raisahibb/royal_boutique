@@ -716,7 +716,14 @@ function AppInner() {
       {/* ── Checkout Page (full-screen overlay) ── */}
       {checkoutOpen && (
         <div className="fixed inset-0 z-[250]">
-          <CheckoutPage onBack={() => setCheckoutOpen(false)} />
+          <CheckoutPage
+            onBack={() => setCheckoutOpen(false)}
+            onViewOrders={() => {
+              setCheckoutOpen(false)
+              setProfileInitialTab('orders')
+              setProfileOpen(true)
+            }}
+          />
         </div>
       )}
 

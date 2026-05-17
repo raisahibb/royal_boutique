@@ -25,6 +25,8 @@ export default function MyOrders({ orders, onBookAppt }: { orders: any[]; onBook
   const { user } = useAuth() as any
   const [filter, setFilter] = useState('All')
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
+  const [localCancelled, setLocalCancelled] = useState<Set<string>>(new Set())
 
   const injectDummyOrder = async () => {
     if (!user?.uid) return alert('Please login first')
@@ -241,10 +243,26 @@ export default function MyOrders({ orders, onBookAppt }: { orders: any[]; onBook
                     </div>
                   )}
 
-                  <button onClick={() => setSelectedOrder(o)}
-                    className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 text-xs font-medium text-white/80 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" style={FONT}>
-                    View Order Details <ChevronRight size={14} />
-                  </button>
+                  {/* Row: View Details + Cancel */}
+                  <div className="flex gap-2">
+                    <button onClick={() => setSelectedOrder(o)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 text-xs font-medium text-white/80 hover:bg-white/5 hover:text-white transition-colors cursor-pointer" style={FONT}>
+                      View Details <ChevronRight size={14} />
+                    </button>
+
+                    {/* Cancel button — only for pending/confirmed, not already cancelled */}
+                    {(o.status === 'pending' || o.status === 'confirmed') && !localCancelled.has(o.id) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCancellingOrderId(o.id) }}
+                        className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-500/25 text-xs font-medium text-red-400/80 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/40 transition-all cursor-pointer shrink-0"
+                        style={FONT}
+                        title="Cancel this order"
+                      >
+                        <XCircle size={13} />
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -254,10 +272,23 @@ export default function MyOrders({ orders, onBookAppt }: { orders: any[]; onBook
 
       {/* ── Order Details Modal ── */}
       {selectedOrder && (
-        <OrderDetailsModal 
-          order={selectedOrder} 
-          onClose={() => setSelectedOrder(null)} 
+        <OrderDetailsModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
           onBookAppt={() => { setSelectedOrder(null); onBookAppt(); }}
+        />
+      )}
+
+      {/* ── Cancellation Modal (from list view) ── */}
+      {cancellingOrderId && (
+        <CancellationModal
+          orderId={cancellingOrderId}
+          userId={user?.uid}
+          onClose={() => setCancellingOrderId(null)}
+          onSuccess={() => {
+            setLocalCancelled(prev => new Set(prev).add(cancellingOrderId!))
+            setCancellingOrderId(null)
+          }}
         />
       )}
     </div>
@@ -516,10 +547,10 @@ function OrderDetailsModal({ order, onClose, onBookAppt }: { order: any; onClose
 ══════════════════════════════════════ */
 const CANCEL_REASONS = [
   'Changed my mind',
-  'Wrong size / fit',
+  'Wrong size or fit selected',
   'Custom measurement issue',
-  'Found a better price elsewhere',
-  'Delivery delay',
+  'Found better price elsewhere',
+  'Delivery taking too long',
   'Other',
 ]
 
@@ -547,11 +578,13 @@ function CancellationModal({ orderId, userId, onClose, onSuccess }: {
     setLoading(true)
     setError('')
     try {
-      // 1. Update order
+      // 1. Update order in Firestore
       await updateDoc(doc(db, 'orders', orderId), {
-        status: 'cancelled',
+        status:             'cancelled',
+        orderStatus:        'cancelled',
+        paymentStatus:      'refund_initiated',
         cancellationReason: finalReason,
-        cancelledAt: serverTimestamp(),
+        cancelledAt:        serverTimestamp(),
         refundMethod,
         ...(refundMethod === 'bank' ? { bankDetails: bank } : {})
       })
@@ -592,6 +625,15 @@ function CancellationModal({ orderId, userId, onClose, onSuccess }: {
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer">
             <X size={15} />
           </button>
+        </div>
+
+        <div className="px-5 pt-4 pb-1">
+          <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/8 border border-amber-500/20 px-3.5 py-3">
+            <span className="text-amber-400 text-base leading-none mt-0.5">⚠</span>
+            <p className="text-xs text-amber-300/80 leading-relaxed" style={FONT}>
+              <span className="font-semibold text-amber-300">This action cannot be undone.</span> Once cancelled, your order cannot be restarted. Refund will be processed in 5–7 business days.
+            </p>
+          </div>
         </div>
 
         <div className="p-5 flex flex-col gap-5">

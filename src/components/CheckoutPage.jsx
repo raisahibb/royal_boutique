@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ArrowLeft, MapPin, Plus, Trash2, Edit2, Check,
-  ShoppingBag, Shield, Truck, ChevronRight, Lock, AlertCircle, Phone, Calendar
+  ShoppingBag, Shield, Truck, ChevronRight, Lock, Phone, Calendar
 } from 'lucide-react'
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
@@ -12,6 +12,22 @@ import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import AddressForm, { emptyAddr } from './AddressForm'
 import AppointmentModal from './AppointmentModal'
+import OrderSuccess from './OrderSuccess'
+
+/* ── API base URL — empty string = relative (dev proxy), or Railway URL in prod ── */
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+/* ── Load Razorpay checkout script dynamically ── */
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) { resolve(true); return }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload  = () => resolve(true)
+    script.onerror = () => resolve(false)
+    document.body.appendChild(script)
+  })
+}
 
 const FONT = { fontFamily: 'Barlow, sans-serif' }
 const SHIPPING_FEE = 0 // Free shipping
@@ -56,7 +72,7 @@ function StepBar({ step }) {
 /* ══════════════════════════════════════════════════════
    MAIN CHECKOUT PAGE
 ══════════════════════════════════════════════════════ */
-export default function CheckoutPage({ onBack }) {
+export default function CheckoutPage({ onBack, onViewOrders }) {
   const { items, subtotal, clearCart, showToast } = useCart()
   const { user } = useAuth()
 
@@ -71,8 +87,14 @@ export default function CheckoutPage({ onBack }) {
 
   const hasCustomMeasurements = items.some(i => i.stitching?.id === 'custom')
   const [orderLoading, setOrderLoading] = useState(false)
+  const [paymentLoading, setPaymentLoading] = useState(false)
   const [orderId, setOrderId] = useState(null)
+  const [rzpPaymentId, setRzpPaymentId] = useState(null)
+  const [orderSuccess, setOrderSuccess] = useState(false)
+  const [paidTotal, setPaidTotal] = useState(0)      // snapshot before clearCart
+  const [paidItems, setPaidItems] = useState([])     // snapshot before clearCart
   const scrollRef = useRef(null)
+  const payingRef = useRef(false)  // prevent double-click
 
   const total = subtotal + SHIPPING_FEE
 
@@ -185,12 +207,13 @@ export default function CheckoutPage({ onBack }) {
     }
   }
 
+  /* ── Step 2 → 3: create a draft order in Firestore, then move to payment step ── */
   async function placeOrderDraft() {
     setOrderLoading(true)
     try {
       const addr = addresses.find(a => a.id === selectedAddrId)
       const ref = await addDoc(collection(db, 'orders'), {
-        userId: user.uid, userName: user.name, userEmail: user.email,
+        userId: user.uid, userName: user.displayName || user.email, userEmail: user.email,
         items: items.map(i => ({
           id: i.id, name: i.name, price: i.price, quantity: i.quantity,
           selectedSize: i.selectedSize, stitching: i.stitching || null, image: i.image
@@ -198,19 +221,183 @@ export default function CheckoutPage({ onBack }) {
         shippingAddress: addr,
         subtotal, shippingFee: SHIPPING_FEE, total,
         requiresCustomMeasurement: items.some(i => i.stitching?.id === 'custom'),
-        status: 'draft', createdAt: serverTimestamp()
+        paymentStatus: 'pending',
+        orderStatus:   'draft',
+        status:        'pending',   // ← read by MyOrders
+        createdAt: serverTimestamp()
       })
       setOrderId(ref.id)
       goToStep(3)
     } catch (err) {
       console.error('Order draft error:', err)
+      showToast('Could not create order. Please try again.')
     } finally {
       setOrderLoading(false)
     }
   }
 
+  /* ── Step 3: open Razorpay modal and handle payment ── */
+  const handlePayNow = useCallback(async () => {
+    if (payingRef.current || paymentLoading) return
+    payingRef.current = true
+    setPaymentLoading(true)
+
+    try {
+      /* 1. Load Razorpay SDK */
+      const loaded = await loadRazorpayScript()
+      if (!loaded) {
+        showToast('Could not load payment gateway. Check your connection.')
+        payingRef.current = false
+        setPaymentLoading(false)
+        return
+      }
+
+      /* 2. Create Razorpay order via backend */
+      let razorpayOrderId, amountInPaise
+      try {
+        const res = await fetch(`${API_BASE}/api/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: total, receipt: orderId || undefined }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Order creation failed')
+        razorpayOrderId = data.razorpayOrderId
+        amountInPaise   = data.amount
+      } catch (err) {
+        console.error('[checkout] create-order error:', err)
+        showToast(`Could not initiate payment: ${err.message}`)
+        payingRef.current = false
+        setPaymentLoading(false)
+        return
+      }
+
+      const KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID
+      const addr   = addresses.find(a => a.id === selectedAddrId)
+
+      /* 3. Open Razorpay modal with server-generated order_id */
+      const options = {
+        key:         KEY_ID,
+        amount:      amountInPaise,
+        currency:    'INR',
+        order_id:    razorpayOrderId,          // ← server-generated, required for signature
+        name:        'Royal Boutique',
+        description: `Order #${(orderId || '').slice(-8).toUpperCase()}`,
+        image:       'https://i.imgur.com/n5tjHFD.png',
+        handler: async function (response) {
+          const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response
+          try {
+            /* 4. Verify payment signature on backend */
+            const vRes = await fetch(`${API_BASE}/api/verify-payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ razorpay_order_id, razorpay_payment_id, razorpay_signature }),
+            })
+            const vData = await vRes.json()
+            if (!vRes.ok || !vData.verified) {
+              throw new Error(vData.error || 'Signature verification failed')
+            }
+
+            /* 5. Verified ✅ — update Firestore (optimistic) */
+            if (orderId) {
+              await updateDoc(doc(db, 'orders', orderId), {
+                razorpayPaymentId: razorpay_payment_id  || null,
+                razorpayOrderId:   razorpay_order_id    || null,
+                razorpaySignature: razorpay_signature   || null,
+                paymentStatus:     'paid',
+                orderStatus:       'placed',
+                status:            'pending',
+                paidAt:            serverTimestamp(),
+              })
+            }
+
+            /* 6. Fire simulate-webhook → triggers full webhook pipeline (dev)
+                  In production Razorpay calls /api/webhook directly.           */
+            fetch(`${API_BASE}/api/simulate-webhook`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({
+                event:             'payment.captured',
+                firestoreOrderId:  orderId,
+                razorpayOrderId:   razorpay_order_id,
+                razorpayPaymentId: razorpay_payment_id,
+              }),
+            }).catch(e => console.warn('[checkout] simulate-webhook non-critical error:', e))
+
+            // Snapshot totals BEFORE clearing the cart
+            setPaidTotal(total)
+            setPaidItems([...items])
+            await clearCart()
+            setRzpPaymentId(razorpay_payment_id)
+            setOrderSuccess(true)
+          } catch (err) {
+            console.error('[checkout] verify-payment error:', err)
+            showToast(`Payment verification failed: ${err.message}. Contact support.`)
+            payingRef.current = false
+            setPaymentLoading(false)
+          }
+        },
+        prefill: {
+          name:    addr?.fullName || user?.displayName || '',
+          email:   user?.email   || '',
+          contact: addr?.phone   || '',
+        },
+        notes: { orderId: orderId || '', userId: user?.uid || '' },
+        theme: { color: '#f9a8d4' },
+        modal: {
+          ondismiss: () => {
+            showToast('Payment cancelled.')
+            payingRef.current = false
+            setPaymentLoading(false)
+          },
+        },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', async (resp) => {
+        console.error('[checkout] payment.failed:', resp.error)
+        if (orderId) {
+          try {
+            await updateDoc(doc(db, 'orders', orderId), {
+              paymentStatus: 'failed',
+              orderStatus:   'failed',
+              status:        'cancelled',  // ← MyOrders shows as Cancelled on payment failure
+              failureReason: resp.error?.description || 'Unknown',
+              failedAt:      serverTimestamp(),
+            })
+          } catch (e) { console.error(e) }
+        }
+        showToast(`Payment failed: ${resp.error?.description || 'Please try again.'}`)
+        payingRef.current = false
+        setPaymentLoading(false)
+      })
+      rzp.open()
+
+    } catch (err) {
+      console.error('[checkout] handlePayNow error:', err)
+      showToast('Something went wrong. Please try again.')
+      payingRef.current = false
+      setPaymentLoading(false)
+    }
+  }, [total, orderId, selectedAddrId, addresses, user, clearCart, showToast, paymentLoading])
+
   const fmt = n => `₹${n.toLocaleString('en-IN')}`
   const selectedAddr = addresses.find(a => a.id === selectedAddrId)
+
+  /* ── Show success page after payment ── */
+  if (orderSuccess) {
+    return (
+      <OrderSuccess
+        orderId={orderId}
+        razorpayPaymentId={rzpPaymentId}
+        total={paidTotal}
+        items={paidItems}
+        requiresCustomMeasurement={hasCustomMeasurements}
+        onContinueShopping={onBack}
+        onViewOrders={onViewOrders || onBack}
+      />
+    )
+  }
 
   /* ── Wrapper ── */
   return (
@@ -509,13 +696,24 @@ export default function CheckoutPage({ onBack }) {
 
               {/* Razorpay CTA */}
               <button
+                disabled={paymentLoading}
+                onClick={handlePayNow}
                 className="w-full py-4 rounded-xl bg-gradient-to-r from-[#1a6fe8] to-[#2d82f5]
                   hover:from-[#1560d4] hover:to-[#2272e0] text-white font-semibold text-base
                   transition-all duration-200 cursor-pointer flex items-center justify-center gap-2.5
-                  shadow-lg shadow-blue-900/30" style={FONT}
-                onClick={() => alert('Razorpay integration pending — Order Draft ID: ' + orderId)}>
-                <Lock size={16} />
-                Pay Securely — {fmt(total)}
+                  shadow-lg shadow-blue-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={FONT}
+              >
+                {paymentLoading ? (
+                  <>
+                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-6.219-8.56" />
+                    </svg>
+                    Opening Payment…
+                  </>
+                ) : (
+                  <><Lock size={16} /> Pay Securely — {fmt(total)}</>
+                )}
               </button>
 
               {/* Security badges */}

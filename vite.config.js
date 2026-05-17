@@ -17,7 +17,6 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use('/images/models', (req, res, next) => {
           const modelsDir = path.resolve(__dirname, 'models')
-          // req.url starts with '/' e.g. '/patiala-red-1.jpg'
           const filePath = path.join(modelsDir, req.url)
           if (fs.existsSync(filePath)) {
             const ext = path.extname(filePath).toLowerCase()
@@ -32,4 +31,14 @@ export default defineConfig({
       },
     },
   ],
+  // ── Dev proxy: /api → Express server on :4000 ─────────────────────────────
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
+  },
 })
+
